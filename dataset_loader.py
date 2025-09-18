@@ -5,14 +5,28 @@ Handles loading, splitting, and creating Hugging Face Dataset objects.
 
 import os
 import random
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass
 from PIL import Image
 import pandas as pd
 from datasets import Dataset, DatasetDict
 from sklearn.model_selection import train_test_split
 
 
+@dataclass
+class DatasetConfig:
+    """Configuration for dataset loading."""
+    dataset_dir: str = "handwritten_output"
+    labels_file: str = "handwritten_output/labels.txt"
+    train_split: float = 0.8
+    val_split: float = 0.1
+    test_split: float = 0.1
+    max_samples: Optional[int] = None
+    seed: int = 42
+
+
 def load_dataset(
+    config: DatasetConfig = None,
     images_dir: str = "handwritten_output",
     labels_file: str = "handwritten_output/labels.txt",
     test_size: float = 0.2,
@@ -23,6 +37,7 @@ def load_dataset(
     Load handwritten medical prescription dataset and create train/val/test splits.
     
     Args:
+        config: DatasetConfig object (takes precedence if provided)
         images_dir: Directory containing the image files
         labels_file: Path to the labels text file
         test_size: Proportion for test set (default 0.2 = 20%)
@@ -32,6 +47,17 @@ def load_dataset(
     Returns:
         DatasetDict with train/validation/test splits
     """
+    # Use config if provided, otherwise use individual parameters
+    if config is not None:
+        images_dir = config.dataset_dir
+        labels_file = config.labels_file
+        test_size = config.test_split
+        val_size = config.val_split / (1 - config.test_split)  # Adjust val_size relative to remaining data
+        seed = config.seed
+        max_samples = config.max_samples
+    else:
+        max_samples = None
+    
     # Set random seeds
     random.seed(seed)
     
@@ -62,6 +88,16 @@ def load_dataset(
                 print(f"Warning: Image file not found: {image_path}")
     
     print(f"Loaded {len(image_paths)} image-text pairs")
+    
+    # Apply max_samples limit if specified
+    if max_samples is not None and max_samples < len(image_paths):
+        print(f"Limiting dataset to {max_samples} samples (from {len(image_paths)})")
+        # Shuffle and take first max_samples
+        combined = list(zip(image_paths, texts))
+        random.shuffle(combined)
+        image_paths, texts = zip(*combined[:max_samples])
+        image_paths, texts = list(image_paths), list(texts)
+        print(f"Using {len(image_paths)} samples")
     
     # Create initial train/test split (80%/20%)
     train_images, test_images, train_texts, test_texts = train_test_split(

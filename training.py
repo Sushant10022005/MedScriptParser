@@ -32,7 +32,7 @@ class TrOCRTrainingConfig:
     logging_steps: int = 10
     eval_steps: int = 100
     save_steps: int = 500
-    evaluation_strategy: str = "steps"
+    eval_strategy: str = "steps"  # Changed from evaluation_strategy
     save_strategy: str = "steps"
     load_best_model_at_end: bool = True
     metric_for_best_model: str = "eval_cer"
@@ -151,7 +151,7 @@ class TrOCRTrainer:
             logging_steps=self.config.logging_steps,
             eval_steps=self.config.eval_steps,
             save_steps=self.config.save_steps,
-            evaluation_strategy=self.config.evaluation_strategy,
+            eval_strategy=self.config.eval_strategy,  # Changed from evaluation_strategy
             save_strategy=self.config.save_strategy,
             load_best_model_at_end=self.config.load_best_model_at_end,
             metric_for_best_model=self.config.metric_for_best_model,

@@ -4,10 +4,10 @@ Handles text normalization and image preprocessing.
 """
 
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from PIL import Image
 from transformers import TrOCRProcessor
-from datasets import Dataset
+from datasets import Dataset, DatasetDict
 
 
 class TextNormalizer:
@@ -85,20 +85,20 @@ class TextNormalizer:
 
 
 def preprocess_dataset(
-    dataset_dict: Dict[str, Dataset],
+    dataset_dict: Union[Dict[str, Dataset], Dataset],
     model_name: str = "microsoft/trocr-large-handwritten",
     max_target_length: int = 128
-) -> Dict[str, Dataset]:
+) -> Union[Dict[str, Dataset], Dataset]:
     """
     Preprocess the dataset for TrOCR training.
     
     Args:
-        dataset_dict: Dataset dictionary with train/val/test splits
+        dataset_dict: Dataset dictionary with train/val/test splits or single Dataset
         model_name: TrOCR model name for processor
         max_target_length: Maximum target sequence length
         
     Returns:
-        Preprocessed dataset dictionary
+        Preprocessed dataset dictionary or single Dataset
     """
     print(f"Loading TrOCR processor for {model_name}...")
     processor = TrOCRProcessor.from_pretrained(model_name)
@@ -135,25 +135,40 @@ def preprocess_dataset(
             'normalized_text': normalized_texts
         }
     
-    # Apply preprocessing to all splits
-    processed_datasets = {}
-    for split_name, dataset in dataset_dict.items():
-        print(f"Preprocessing {split_name} set...")
-        
-        # Process in batches for efficiency
-        processed_dataset = dataset.map(
+    # Handle single Dataset vs DatasetDict/Dict
+    if isinstance(dataset_dict, Dataset):
+        # Process single dataset
+        print("Preprocessing single dataset...")
+        processed_dataset = dataset_dict.map(
             preprocess_function,
             batched=True,
             batch_size=32,
-            remove_columns=dataset.column_names,
-            desc=f"Preprocessing {split_name}"
+            remove_columns=dataset_dict.column_names,
+            desc="Preprocessing dataset"
         )
-        
-        processed_datasets[split_name] = processed_dataset
-        print(f"  {split_name}: {len(processed_dataset)} samples processed")
+        print(f"Processed {len(processed_dataset)} samples")
+        return processed_dataset
     
-    print("Preprocessing complete!")
-    return processed_datasets
+    else:
+        # Apply preprocessing to all splits
+        processed_datasets = {}
+        for split_name, dataset in dataset_dict.items():
+            print(f"Preprocessing {split_name} set...")
+            
+            # Process in batches for efficiency
+            processed_dataset = dataset.map(
+                preprocess_function,
+                batched=True,
+                batch_size=32,
+                remove_columns=dataset.column_names,
+                desc=f"Preprocessing {split_name}"
+            )
+            
+            processed_datasets[split_name] = processed_dataset
+            print(f"  {split_name}: {len(processed_dataset)} samples processed")
+        
+        print("Preprocessing complete!")
+        return processed_datasets
 
 
 def create_data_collator(processor: TrOCRProcessor):
