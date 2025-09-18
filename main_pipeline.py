@@ -3,6 +3,9 @@ Main pipeline for end-to-end OCR-based handwritten medical prescription parser.
 """
 
 import os
+# Ensure Weights & Biases is completely disabled before importing training
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_MODE"] = "disabled"
 import json
 import time
 import argparse

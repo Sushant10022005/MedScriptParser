@@ -3,6 +3,9 @@ Training module for TrOCR fine-tuning on medical prescriptions.
 """
 
 import os
+# Hard-disable Weights & Biases in all contexts (no prompts, no offline runs)
+os.environ["WANDB_DISABLED"] = "true"
+os.environ["WANDB_MODE"] = "disabled"
 import torch
 import numpy as np
 from typing import Dict, Any, Optional
@@ -40,7 +43,8 @@ class TrOCRTrainingConfig:
     save_total_limit: int = 3
     seed: int = 42
     fp16: bool = True  # Use mixed precision if GPU available
-    dataloader_num_workers: int = 4
+    # Use 0 workers on Windows to avoid multiprocessing spawn/pickle issues
+    dataloader_num_workers: int = 0 if os.name == "nt" else 4
     max_target_length: int = 128
     early_stopping_patience: int = 3
 
@@ -141,6 +145,7 @@ class TrOCRTrainer:
         os.makedirs(self.config.output_dir, exist_ok=True)
         
         # Setup training arguments
+        # Ensure logging integrations are fully disabled and workers are safe on Windows
         training_args = TrainingArguments(
             output_dir=self.config.output_dir,
             num_train_epochs=self.config.num_train_epochs,
@@ -159,9 +164,12 @@ class TrOCRTrainer:
             save_total_limit=self.config.save_total_limit,
             seed=self.config.seed,
             fp16=self.config.fp16 and torch.cuda.is_available(),
-            dataloader_num_workers=self.config.dataloader_num_workers,
+            dataloader_num_workers=(0 if os.name == "nt" else self.config.dataloader_num_workers),
+            dataloader_pin_memory=False,
             remove_unused_columns=False,
-            report_to=None,  # Disable wandb/tensorboard for now
+            # Explicitly disable all reporters; use "none" to avoid auto-detection
+            report_to="none",
+            run_name="trocr-training",  # distinct name to avoid clashes if any logger is enabled externally
         )
         
         # Create data collator
