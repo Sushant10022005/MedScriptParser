@@ -237,7 +237,7 @@ class ComprehensiveEvaluator:
         # Save metrics summary
         metrics_json_path = os.path.join(output_dir, "metrics_summary.json")
         with open(metrics_json_path, 'w') as f:
-            json.dump(final_results, f, indent=2)
+            json.dump(final_results, f, indent=2, default=str)
         print(f"Metrics summary saved to {metrics_json_path}")
         
         # Print summary

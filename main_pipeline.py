@@ -55,7 +55,6 @@ class OCRPipelineConfig:
         max_samples: Optional[int] = None,  # For testing with subset
         skip_training: bool = False,  # Skip training if model exists
         skip_correction: bool = False,  # Skip correction step
-        quick_test: bool = False,  # Super fast test mode (no model loading)
     ):
         self.dataset_dir = dataset_dir
         self.labels_file = labels_file
