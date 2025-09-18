@@ -146,6 +146,12 @@ def preprocess_dataset(
             remove_columns=dataset_dict.column_names,
             desc="Preprocessing dataset"
         )
+        # Ensure items are returned as PyTorch tensors
+        try:
+            processed_dataset.set_format(type="torch", columns=["pixel_values", "labels"])
+        except Exception:
+            # Fall back silently if unavailable in current environment
+            pass
         print(f"Processed {len(processed_dataset)} samples")
         return processed_dataset
     
@@ -163,6 +169,11 @@ def preprocess_dataset(
                 remove_columns=dataset.column_names,
                 desc=f"Preprocessing {split_name}"
             )
+            # Ensure items are returned as PyTorch tensors
+            try:
+                processed_dataset.set_format(type="torch", columns=["pixel_values", "labels"])
+            except Exception:
+                pass
             
             processed_datasets[split_name] = processed_dataset
             print(f"  {split_name}: {len(processed_dataset)} samples processed")

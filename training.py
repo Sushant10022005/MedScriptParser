@@ -56,10 +56,22 @@ class TrOCRDataCollator:
         self.processor = processor
     
     def __call__(self, batch):
-        # Get pixel values and labels
-        pixel_values = torch.stack([item['pixel_values'] for item in batch])
-        labels = torch.stack([item['labels'] for item in batch])
-        
+        # Get pixel values and labels, ensuring tensor types
+        def to_tensor(x):
+            if isinstance(x, torch.Tensor):
+                return x
+            # Convert lists/arrays to tensors
+            return torch.tensor(x)
+
+        pixel_values_list = [to_tensor(item['pixel_values']) for item in batch]
+        # Some pipelines may keep an extra leading batch dim; squeeze it if present
+        pixel_values_list = [pv.squeeze(0) if pv.ndim == 4 else pv for pv in pixel_values_list]
+        pixel_values = torch.stack(pixel_values_list)
+
+        labels_list = [to_tensor(item['labels']) for item in batch]
+        labels_list = [lbl.squeeze(0) if lbl.ndim == 2 else lbl for lbl in labels_list]
+        labels = torch.stack(labels_list)
+
         return {
             'pixel_values': pixel_values,
             'labels': labels
