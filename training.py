@@ -175,6 +175,54 @@ class TrOCRTrainer:
         if isinstance(labels, np.ndarray) and not np.issubdtype(labels.dtype, np.integer):
             labels = labels.astype(np.int64)
 
+        # Sanitize prediction ids to valid tokenizer range to avoid OverflowError in fast decode
+        tok = self.processor.tokenizer
+        pad_id = getattr(tok, 'pad_token_id', 0) or 0
+        unk_id = getattr(tok, 'unk_token_id', pad_id)
+        max_id = None
+        try:
+            max_id = len(tok) - 1  # total vocab including added tokens
+        except Exception:
+            pass
+        vs = getattr(tok, 'vocab_size', None)
+        if isinstance(vs, int):
+            max_id = max(vs - 1, max_id) if isinstance(max_id, int) else vs - 1
+        if not isinstance(max_id, int):
+            try:
+                vocab = tok.get_vocab()
+                if isinstance(vocab, dict) and vocab:
+                    max_id = max(vocab.values())
+            except Exception:
+                pass
+        if not isinstance(max_id, int):
+            max_id = 1_000_000  # conservative cap to avoid overflow in tokenizer
+
+        def _sanitize_ids(arr_like):
+            # Handles numpy arrays or nested Python lists
+            if isinstance(arr_like, np.ndarray):
+                x = arr_like
+                x = np.where(x < 0, pad_id, x)
+                x = np.where(x > max_id, unk_id, x)
+                return x
+            if isinstance(arr_like, list):
+                def clamp_id(v):
+                    try:
+                        v_int = int(v)
+                    except Exception:
+                        return unk_id
+                    if v_int < 0:
+                        return pad_id
+                    if v_int > max_id:
+                        return unk_id
+                    return v_int
+                if len(arr_like) > 0 and isinstance(arr_like[0], list):
+                    return [[clamp_id(t) for t in seq] for seq in arr_like]
+                else:
+                    return [clamp_id(t) for t in arr_like]
+            return arr_like
+
+        predictions = _sanitize_ids(predictions)
+
         # Replace -100 in labels with pad token id for proper decoding
         if labels is not None:
             pad_id = self.processor.tokenizer.pad_token_id
