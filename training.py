@@ -52,8 +52,9 @@ class TrOCRTrainingConfig:
 class TrOCRDataCollator:
     """Data collator for TrOCR training."""
     
-    def __init__(self, processor: TrOCRProcessor):
+    def __init__(self, processor: TrOCRProcessor, max_target_length: int = 128):
         self.processor = processor
+        self.max_target_length = max_target_length
     
     def __call__(self, batch):
         """Builds model inputs on the fly from raw dataset rows to reduce RAM usage."""
@@ -61,16 +62,23 @@ class TrOCRDataCollator:
         images = [item['image'] for item in batch]
         texts = [item.get('normalized_text', item['text']) for item in batch]
 
-        # Processor builds pixel tensors and labels lazily per batch
-        model_inputs = self.processor(images=images, text=texts, return_tensors="pt", padding=True, truncation=True)
+        # Build pixel tensors using the image processor only
+        pixel_values = self.processor(images=images, return_tensors="pt").pixel_values
 
-        # Replace padding token id by -100 for loss masking
-        labels = model_inputs.input_ids.clone()
+        # Tokenize labels with the tokenizer
+        tokenized = self.processor.tokenizer(
+            texts,
+            padding="max_length",
+            truncation=True,
+            max_length=self.max_target_length,
+            return_tensors="pt",
+        )
+        labels = tokenized.input_ids
         labels[labels == self.processor.tokenizer.pad_token_id] = -100
 
         return {
-            'pixel_values': model_inputs.pixel_values,
-            'labels': labels
+            'pixel_values': pixel_values,
+            'labels': labels,
         }
 
 
@@ -190,6 +198,10 @@ class TrOCRTrainer:
             'remove_unused_columns': False,
             'report_to': 'none',
             'run_name': 'trocr-training',
+            # Generate sequences during eval to compute CER/WER correctly
+            'predict_with_generate': True,
+            'generation_max_length': self.config.max_target_length,
+            'generation_num_beams': 4,
         }
         # Prefer evaluation_strategy; fall back to eval_strategy if needed
         if 'evaluation_strategy' in ta_sig:
@@ -201,7 +213,7 @@ class TrOCRTrainer:
         training_args = TrainingArguments(**ta_kwargs)
         
         # Create data collator
-        data_collator = TrOCRDataCollator(self.processor)
+        data_collator = TrOCRDataCollator(self.processor, self.config.max_target_length)
         
         # Initialize trainer
         trainer = Trainer(
@@ -243,9 +255,13 @@ class TrOCRTrainer:
         }
         
         print("Training completed!")
-        print(f"Best CER: {min(training_history['eval_cer_history']):.4f}")
-        print(f"Best WER: {min(training_history['eval_wer_history']):.4f}")
-        print(f"Best Exact Match Rate: {max(training_history['eval_exact_match_rate_history']):.4f}")
+        # Guard in case histories are empty early on
+        if training_history['eval_cer_history']:
+            print(f"Best CER: {min(training_history['eval_cer_history']):.4f}")
+        if training_history['eval_wer_history']:
+            print(f"Best WER: {min(training_history['eval_wer_history']):.4f}")
+        if training_history['eval_exact_match_rate_history']:
+            print(f"Best Exact Match Rate: {max(training_history['eval_exact_match_rate_history']):.4f}")
         
         return {
             'train_result': train_result,
