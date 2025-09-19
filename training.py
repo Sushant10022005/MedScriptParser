@@ -6,6 +6,8 @@ import os
 # Hard-disable Weights & Biases in all contexts (no prompts, no offline runs)
 os.environ["WANDB_DISABLED"] = "true"
 os.environ["WANDB_MODE"] = "disabled"
+# Reduce CUDA fragmentation during long eval/generate
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 import numpy as np
 from typing import Dict, Any, Optional
@@ -275,6 +277,8 @@ class TrOCRTrainer:
             'num_train_epochs': self.config.num_train_epochs,
             'per_device_train_batch_size': self.config.per_device_train_batch_size,
             'per_device_eval_batch_size': self.config.per_device_eval_batch_size,
+            # Accumulate eval predictions to CPU regularly to avoid OOM
+            'eval_accumulation_steps': 1,
             'learning_rate': self.config.learning_rate,
             'warmup_steps': self.config.warmup_steps,
             'logging_steps': self.config.logging_steps,
@@ -303,6 +307,9 @@ class TrOCRTrainer:
             ta_kwargs['evaluation_strategy'] = self.config.eval_strategy
         elif 'eval_strategy' in ta_sig:
             ta_kwargs['eval_strategy'] = self.config.eval_strategy
+        # Use half precision during eval if supported to reduce memory
+        if 'fp16_full_eval' in ta_sig:
+            ta_kwargs['fp16_full_eval'] = (torch.cuda.is_available())
         # Filter unsupported keys for this Transformers version
         ta_kwargs = {k: v for k, v in ta_kwargs.items() if supported(k)}
         training_args = TrainingArguments(**ta_kwargs)
