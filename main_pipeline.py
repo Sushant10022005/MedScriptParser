@@ -41,6 +41,9 @@ class OCRPipelineConfig:
         num_epochs: int = 10,
         batch_size: int = 8,
         learning_rate: float = 5e-5,
+        # Generation settings (also used for memory control)
+        generation_max_length: int = 128,
+        generation_num_beams: int = 4,
         
         # Inference settings
         inference_batch_size: int = 16,
@@ -58,6 +61,7 @@ class OCRPipelineConfig:
         max_samples: Optional[int] = None,  # For testing with subset
         skip_training: bool = False,  # Skip training if model exists
         skip_correction: bool = False,  # Skip correction step
+        tiny: bool = False,  # Force tiny, low-memory mode
     ):
         self.dataset_dir = dataset_dir
         self.labels_file = labels_file
@@ -70,6 +74,8 @@ class OCRPipelineConfig:
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.generation_max_length = generation_max_length
+        self.generation_num_beams = generation_num_beams
         
         self.inference_batch_size = inference_batch_size
         
@@ -83,6 +89,7 @@ class OCRPipelineConfig:
         self.max_samples = max_samples
         self.skip_training = skip_training
         self.skip_correction = skip_correction
+        self.tiny = tiny
         
         # Create directories
         os.makedirs(self.output_dir, exist_ok=True)
@@ -205,7 +212,9 @@ class OCRPipeline:
             per_device_train_batch_size=self.config.batch_size,
             per_device_eval_batch_size=self.config.batch_size,
             learning_rate=self.config.learning_rate,
-            seed=self.config.seed
+            seed=self.config.seed,
+            max_target_length=self.config.generation_max_length,
+            generation_num_beams=self.config.generation_num_beams,
         )
         
         # Train model
@@ -231,11 +240,13 @@ class OCRPipeline:
             model_path = self.config.model_name
         
         # Run inference
+        # If tiny mode, reduce inference batch and beams
+        tiny_bs = max(1, min(2, self.config.inference_batch_size)) if self.config.tiny else self.config.inference_batch_size
         inference_results = infer_on_test_dataset(
             model_path=model_path,
             test_dataset=self.datasets['test'],
             output_file=os.path.join(self.config.results_dir, "ocr_predictions.csv"),
-            batch_size=self.config.inference_batch_size
+            batch_size=tiny_bs
         )
         
         self.results['inference_results'] = inference_results
@@ -485,6 +496,8 @@ def create_test_config() -> OCRPipelineConfig:
         max_samples=100,  # Use only 100 samples for testing
         num_epochs=1,     # Train for only 1 epoch
         batch_size=4,     # Smaller batch size
+        generation_max_length=96,
+        generation_num_beams=2,
         skip_training=False,
         skip_correction=False
     )
@@ -510,6 +523,10 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=8, help="Training batch size")
     parser.add_argument("--max-samples", type=int, help="Maximum number of samples to use")
     parser.add_argument("--output-dir", type=str, default="./ocr_project", help="Output directory")
+    parser.add_argument("--tiny", action="store_true", help="Force tiny mode: small model, dataset, and batch sizes for low RAM")
+    parser.add_argument("--model", type=str, help="Override model name (e.g., microsoft/trocr-base-handwritten)")
+    parser.add_argument("--gen-max-length", type=int, help="Override generation max length (shorter saves memory)")
+    parser.add_argument("--gen-beams", type=int, help="Override generation beams (fewer saves memory)")
     
     args = parser.parse_args()
     
@@ -526,10 +543,31 @@ if __name__ == "__main__":
         config.skip_correction = True
     if args.max_samples:
         config.max_samples = args.max_samples
+    if args.tiny:
+        # Force tiny, low-memory settings
+        config.tiny = True
+        config.model_name = args.model or "microsoft/trocr-base-handwritten"
+        # drastically reduce sample size if not provided
+        config.max_samples = min(config.max_samples or 200, 200)
+        config.batch_size = min(args.batch_size or config.batch_size, 2)
+        config.inference_batch_size = min(config.inference_batch_size, 2)
+        config.num_epochs = min(config.num_epochs, 1)
+        config.generation_max_length = min(args.gen_max_length or config.generation_max_length, 96)
+        config.generation_num_beams = min(args.gen_beams or config.generation_num_beams, 2)
+        os.environ["TINY_MODE"] = "1"
+        # Default to skipping heavy steps unless explicitly requested
+        config.skip_training = True if not args.skip_training else config.skip_training
+        config.skip_correction = True if not args.skip_correction else config.skip_correction
+    if args.model:
+        config.model_name = args.model
     
     config.num_epochs = args.epochs
     config.batch_size = args.batch_size
     config.output_dir = args.output_dir
+    if args.gen_max_length:
+        config.generation_max_length = args.gen_max_length
+    if args.gen_beams:
+        config.generation_num_beams = args.gen_beams
     
     # Run pipeline
     try:

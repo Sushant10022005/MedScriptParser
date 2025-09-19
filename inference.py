@@ -51,6 +51,13 @@ class TrOCRInferenceEngine:
             self.model = VisionEncoderDecoderModel.from_pretrained(self.model_path)
             self.model.to(self.device)
             self.model.eval()
+            # If low-memory mode requested via env, reduce generation defaults
+            if os.environ.get("TINY_MODE", "0") == "1":
+                try:
+                    self.model.config.max_length = min(getattr(self.model.config, 'max_length', 128), 96)
+                    self.model.config.num_beams = min(getattr(self.model.config, 'num_beams', 4), 2)
+                except Exception:
+                    pass
             
             print(f"Model loaded successfully on {self.device}")
             
@@ -59,7 +66,7 @@ class TrOCRInferenceEngine:
             print("Falling back to base model...")
             
             # Fallback to base model
-            base_model = "microsoft/trocr-large-handwritten"
+            base_model = "microsoft/trocr-base-handwritten"
             self.processor = TrOCRProcessor.from_pretrained(base_model)
             self.model = VisionEncoderDecoderModel.from_pretrained(base_model)
             self.model.to(self.device)

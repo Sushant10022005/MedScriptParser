@@ -48,6 +48,7 @@ class TrOCRTrainingConfig:
     # Use 0 workers on Windows to avoid multiprocessing spawn/pickle issues
     dataloader_num_workers: int = 0 if os.name == "nt" else 4
     max_target_length: int = 128
+    generation_num_beams: int = 4
     early_stopping_patience: int = 3
 
 
@@ -118,7 +119,7 @@ class TrOCRTrainer:
         self.model.config.early_stopping = True
         self.model.config.no_repeat_ngram_size = 3
         self.model.config.length_penalty = 2.0
-        self.model.config.num_beams = 4
+        self.model.config.num_beams = max(1, int(self.config.generation_num_beams))
         
         # Reduce memory footprint without changing numerical training objective
         try:
@@ -300,7 +301,7 @@ class TrOCRTrainer:
             # Generate sequences during eval to compute CER/WER correctly
             'predict_with_generate': True,
             'generation_max_length': self.config.max_target_length,
-            'generation_num_beams': 4,
+            'generation_num_beams': max(1, int(self.config.generation_num_beams)),
         }
         # Prefer evaluation_strategy; fall back to eval_strategy if needed
         if 'evaluation_strategy' in ta_sig:
