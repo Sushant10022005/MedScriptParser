@@ -98,9 +98,14 @@ def preprocess_dataset(
     text_normalizer = TextNormalizer()
 
     def add_normalized_text(batch):
-        texts = batch["text"] if isinstance(batch["text"], list) else [batch["text"]]
+        # This function is called with batched=True below, so batch["text"] is a list.
+        texts = batch["text"]
+        # Ensure texts is a list even if a single example slips through
+        if not isinstance(texts, list):
+            texts = [texts]
         normalized = [text_normalizer.normalize_for_training(t) for t in texts]
-        return {"normalized_text": normalized if len(normalized) > 1 else normalized[0]}
+        # For batched=True, datasets.map expects lists/arrays per key
+        return {"normalized_text": normalized}
 
     if isinstance(dataset_dict, Dataset):
         print("Adding normalized_text to dataset (no tensor materialization)...")
