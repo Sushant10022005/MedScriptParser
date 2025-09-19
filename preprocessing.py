@@ -90,96 +90,29 @@ def preprocess_dataset(
     max_target_length: int = 128
 ) -> Union[Dict[str, Dataset], Dataset]:
     """
-    Preprocess the dataset for TrOCR training.
-    
-    Args:
-        dataset_dict: Dataset dictionary with train/val/test splits or single Dataset
-        model_name: TrOCR model name for processor
-        max_target_length: Maximum target sequence length
-        
-    Returns:
-        Preprocessed dataset dictionary or single Dataset
+    Lightweight preprocessing that keeps memory usage low:
+    - No pixel tensors or label tensors are materialized.
+    - Adds a 'normalized_text' column only.
+    Images remain as lazy-loaded datasets.Image so they decode on demand.
     """
-    print(f"Loading TrOCR processor for {model_name}...")
-    processor = TrOCRProcessor.from_pretrained(model_name)
     text_normalizer = TextNormalizer()
-    
-    def preprocess_function(examples):
-        """Preprocess function for batched processing."""
-        # Process images
-        images = examples['image']
-        texts = examples['text']
-        
-        # Normalize texts
-        normalized_texts = [text_normalizer.normalize_for_training(text) for text in texts]
-        
-        # Process images (automatically handles resizing and normalization)
-        pixel_values = processor(images, return_tensors="pt").pixel_values
-        
-        # Tokenize texts
-        labels = processor.tokenizer(
-            normalized_texts,
-            padding="max_length",
-            max_length=max_target_length,
-            truncation=True,
-            return_tensors="pt"
-        ).input_ids
-        
-        # Replace padding token id's of the labels by -100 so they're ignored in loss computation
-        labels[labels == processor.tokenizer.pad_token_id] = -100
-        
-        return {
-            'pixel_values': pixel_values,
-            'labels': labels,
-            'original_text': texts,
-            'normalized_text': normalized_texts
-        }
-    
-    # Handle single Dataset vs DatasetDict/Dict
+
+    def add_normalized_text(batch):
+        texts = batch["text"] if isinstance(batch["text"], list) else [batch["text"]]
+        normalized = [text_normalizer.normalize_for_training(t) for t in texts]
+        return {"normalized_text": normalized if len(normalized) > 1 else normalized[0]}
+
     if isinstance(dataset_dict, Dataset):
-        # Process single dataset
-        print("Preprocessing single dataset...")
-        processed_dataset = dataset_dict.map(
-            preprocess_function,
-            batched=True,
-            batch_size=32,
-            remove_columns=dataset_dict.column_names,
-            desc="Preprocessing dataset"
-        )
-        # Ensure items are returned as PyTorch tensors
-        try:
-            processed_dataset.set_format(type="torch", columns=["pixel_values", "labels"])
-        except Exception:
-            # Fall back silently if unavailable in current environment
-            pass
-        print(f"Processed {len(processed_dataset)} samples")
-        return processed_dataset
-    
+        print("Adding normalized_text to dataset (no tensor materialization)...")
+        ds = dataset_dict.map(add_normalized_text, batched=True, desc="Normalizing text")
+        return ds
     else:
-        # Apply preprocessing to all splits
-        processed_datasets = {}
-        for split_name, dataset in dataset_dict.items():
-            print(f"Preprocessing {split_name} set...")
-            
-            # Process in batches for efficiency
-            processed_dataset = dataset.map(
-                preprocess_function,
-                batched=True,
-                batch_size=32,
-                remove_columns=dataset.column_names,
-                desc=f"Preprocessing {split_name}"
-            )
-            # Ensure items are returned as PyTorch tensors
-            try:
-                processed_dataset.set_format(type="torch", columns=["pixel_values", "labels"])
-            except Exception:
-                pass
-            
-            processed_datasets[split_name] = processed_dataset
-            print(f"  {split_name}: {len(processed_dataset)} samples processed")
-        
-        print("Preprocessing complete!")
-        return processed_datasets
+        processed = {}
+        for split_name, ds in dataset_dict.items():
+            print(f"Adding normalized_text to {split_name} set...")
+            processed[split_name] = ds.map(add_normalized_text, batched=True, desc=f"Normalizing {split_name}")
+        print("Preprocessing complete (texts normalized).")
+        return processed
 
 
 def create_data_collator(processor: TrOCRProcessor):

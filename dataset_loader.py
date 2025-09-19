@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from PIL import Image
 import pandas as pd
-from datasets import Dataset, DatasetDict
+from datasets import Dataset, DatasetDict, Image
 from sklearn.model_selection import train_test_split
 
 
@@ -116,18 +116,14 @@ def load_dataset(
     
     # Create datasets
     def create_dataset(image_paths: List[str], texts: List[str]) -> Dataset:
-        """Create a Hugging Face Dataset from image paths and texts."""
-        def load_image(path: str) -> Image.Image:
-            return Image.open(path).convert('RGB')
-        
-        # Load all images
-        images = [load_image(path) for path in image_paths]
-        
-        return Dataset.from_dict({
-            'image': images,
+        """Create a Hugging Face Dataset lazily from image paths and texts (low RAM)."""
+        ds = Dataset.from_dict({
+            'image': image_paths,  # keep file paths, cast to Image feature (lazy decode)
             'text': texts,
             'image_path': image_paths
         })
+        ds = ds.cast_column('image', Image())
+        return ds
     
     print("Creating Hugging Face datasets...")
     train_dataset = create_dataset(train_images, train_texts)

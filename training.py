@@ -56,24 +56,20 @@ class TrOCRDataCollator:
         self.processor = processor
     
     def __call__(self, batch):
-        # Get pixel values and labels, ensuring tensor types
-        def to_tensor(x):
-            if isinstance(x, torch.Tensor):
-                return x
-            # Convert lists/arrays to tensors
-            return torch.tensor(x)
+        """Builds model inputs on the fly from raw dataset rows to reduce RAM usage."""
+        # Expect dataset rows to have 'image' (datasets.Image -> PIL) and 'text'/'normalized_text'
+        images = [item['image'] for item in batch]
+        texts = [item.get('normalized_text', item['text']) for item in batch]
 
-        pixel_values_list = [to_tensor(item['pixel_values']) for item in batch]
-        # Some pipelines may keep an extra leading batch dim; squeeze it if present
-        pixel_values_list = [pv.squeeze(0) if pv.ndim == 4 else pv for pv in pixel_values_list]
-        pixel_values = torch.stack(pixel_values_list)
+        # Processor builds pixel tensors and labels lazily per batch
+        model_inputs = self.processor(images=images, text=texts, return_tensors="pt", padding=True, truncation=True)
 
-        labels_list = [to_tensor(item['labels']) for item in batch]
-        labels_list = [lbl.squeeze(0) if lbl.ndim == 2 else lbl for lbl in labels_list]
-        labels = torch.stack(labels_list)
+        # Replace padding token id by -100 for loss masking
+        labels = model_inputs.input_ids.clone()
+        labels[labels == self.processor.tokenizer.pad_token_id] = -100
 
         return {
-            'pixel_values': pixel_values,
+            'pixel_values': model_inputs.pixel_values,
             'labels': labels
         }
 
@@ -114,6 +110,14 @@ class TrOCRTrainer:
         self.model.config.length_penalty = 2.0
         self.model.config.num_beams = 4
         
+        # Reduce memory footprint without changing numerical training objective
+        try:
+            self.model.gradient_checkpointing_enable()
+        except Exception:
+            pass
+        # Disable cache for correct gradients with checkpointing
+        if hasattr(self.model, 'config'):
+            self.model.config.use_cache = False
         print("Model and processor loaded successfully!")
         
     def compute_metrics(self, eval_pred):
@@ -168,7 +172,7 @@ class TrOCRTrainer:
             logging_steps=self.config.logging_steps,
             eval_steps=self.config.eval_steps,
             save_steps=self.config.save_steps,
-            eval_strategy=self.config.eval_strategy,  # Changed from evaluation_strategy
+            evaluation_strategy=self.config.eval_strategy,
             save_strategy=self.config.save_strategy,
             load_best_model_at_end=self.config.load_best_model_at_end,
             metric_for_best_model=self.config.metric_for_best_model,
@@ -178,6 +182,7 @@ class TrOCRTrainer:
             fp16=self.config.fp16 and torch.cuda.is_available(),
             dataloader_num_workers=(0 if os.name == "nt" else self.config.dataloader_num_workers),
             dataloader_pin_memory=False,
+            dataloader_persistent_workers=False,
             remove_unused_columns=False,
             # Explicitly disable all reporters; use "none" to avoid auto-detection
             report_to="none",

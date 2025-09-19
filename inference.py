@@ -231,11 +231,16 @@ class TrOCRInferenceEngine:
         Returns:
             List of prediction results
         """
-        images = [item[image_column] for item in dataset]
+        # Avoid loading images eagerly; keep references only
         image_paths = [item.get('image_path', f'image_{i}') for i, item in enumerate(dataset)]
-        
-        print(f"Running inference on {len(images)} images...")
-        predictions = self.predict_batch(images, return_confidence=return_confidence)
+        print(f"Running inference on {len(dataset)} images...")
+        # Predict in streaming fashion by loading batches of paths
+        predictions = []
+        for i in tqdm(range(0, len(dataset), self.batch_size), desc="Running inference"):
+            batch_items = [dataset[j] for j in range(i, min(i + self.batch_size, len(dataset)))]
+            batch_images = [bi[image_column] for bi in batch_items]
+            preds = self.predict_batch(batch_images, return_confidence=return_confidence, show_progress=False)
+            predictions.extend(preds)
         
         # Create results
         results = []
