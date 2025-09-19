@@ -10,6 +10,57 @@ from typing import List, Dict, Any, Optional, Tuple, Set
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 import pandas as pd
+from dataclasses import asdict, is_dataclass
+
+# Optional deps for robust JSON serialization
+try:
+    import numpy as np  # type: ignore
+except Exception:  # pragma: no cover
+    np = None  # type: ignore
+try:
+    import torch as _torch  # type: ignore
+    _TORCH_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _torch = None  # type: ignore
+    _TORCH_AVAILABLE = False
+
+def _to_native(obj):
+    """Recursively convert objects to JSON-serializable Python types.
+    - numpy scalars -> Python scalars
+    - numpy arrays -> lists
+    - torch tensors -> lists
+    - dataclasses -> dicts
+    """
+    # numpy types
+    if np is not None:
+        if isinstance(obj, getattr(np, 'generic', ())):  # numpy scalar
+            try:
+                return obj.item()
+            except Exception:
+                pass
+        if isinstance(obj, getattr(np, 'ndarray', ())):
+            try:
+                return obj.tolist()
+            except Exception:
+                pass
+    # torch tensors
+    if _TORCH_AVAILABLE and isinstance(obj, getattr(_torch, 'Tensor', ())):
+        try:
+            return obj.detach().cpu().tolist()
+        except Exception:
+            pass
+    # dataclasses
+    if is_dataclass(obj):
+        try:
+            return {k: _to_native(v) for k, v in asdict(obj).items()}
+        except Exception:
+            pass
+    # containers
+    if isinstance(obj, dict):
+        return {k: _to_native(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [_to_native(v) for v in obj]
+    return obj
 
 try:
     from rapidfuzz import fuzz, process
@@ -484,12 +535,12 @@ def save_correction_results(
             'num_entities': len(result.entities),
             'num_corrections': len(result.corrections_made),
             'confidence_score': result.confidence_score,
-            'entities': json.dumps([{
+            'entities': json.dumps(_to_native([{
                 'text': e.text,
                 'label': e.label,
                 'confidence': e.confidence
-            } for e in result.entities]),
-            'corrections': json.dumps(result.corrections_made)
+            } for e in result.entities])),
+            'corrections': json.dumps(_to_native(result.corrections_made))
         })
     
     df = pd.DataFrame(data)
