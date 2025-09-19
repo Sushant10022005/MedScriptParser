@@ -130,14 +130,61 @@ class TrOCRTrainer:
         
     def compute_metrics(self, eval_pred):
         """Compute CER and WER metrics."""
-        predictions, labels = eval_pred
-        
-        # Replace -100 in labels with pad token id
-        labels = np.where(labels != -100, labels, self.processor.tokenizer.pad_token_id)
-        
-        # Decode predictions and labels
-        pred_texts = self.processor.batch_decode(predictions, skip_special_tokens=True)
-        label_texts = self.processor.batch_decode(labels, skip_special_tokens=True)
+        # EvalPrediction can contain nested structures depending on transformers version
+        predictions = getattr(eval_pred, 'predictions', None)
+        labels = getattr(eval_pred, 'label_ids', None)
+        # Fallback for transformers versions that pass a simple (preds, labels) tuple
+        if predictions is None and (isinstance(eval_pred, (list, tuple)) and len(eval_pred) == 2):
+            predictions, labels = eval_pred
+
+        # Unwrap common tuple/list wrappers from generate outputs
+        if isinstance(predictions, (list, tuple)) and len(predictions) > 0 and not isinstance(predictions[0], (int, np.integer)):
+            # Prefer the first element if it's a (sequences, ...) tuple
+            if isinstance(predictions[0], (np.ndarray, list)):
+                predictions = predictions[0]
+
+        # Ensure numpy arrays (convert from torch if needed)
+        try:
+            import torch as _torch  # local alias to avoid shadowing
+        except Exception:
+            _torch = None
+        if _torch is not None and isinstance(predictions, _torch.Tensor):
+            predictions = predictions.detach().cpu().numpy()
+        if _torch is not None and isinstance(labels, _torch.Tensor):
+            labels = labels.detach().cpu().numpy()
+        if isinstance(predictions, list):
+            predictions = np.array(predictions)
+        if isinstance(labels, list):
+            labels = np.array(labels)
+
+        # Squeeze away beams or singleton dims: expect shape (N, T)
+        if isinstance(predictions, np.ndarray) and predictions.ndim == 3:
+            # Take the first beam if present: (batch, beams, seq_len) -> (batch, seq_len)
+            predictions = predictions[:, 0, :]
+        if isinstance(labels, np.ndarray) and labels.ndim == 3:
+            labels = labels[:, 0, :]
+        # If 1D, make it a batch of size 1
+        if isinstance(predictions, np.ndarray) and predictions.ndim == 1:
+            predictions = predictions[None, :]
+        if isinstance(labels, np.ndarray) and labels.ndim == 1:
+            labels = labels[None, :]
+
+        # Convert to integer dtype to satisfy tokenizer fast API
+        if isinstance(predictions, np.ndarray) and not np.issubdtype(predictions.dtype, np.integer):
+            predictions = predictions.astype(np.int64)
+        if isinstance(labels, np.ndarray) and not np.issubdtype(labels.dtype, np.integer):
+            labels = labels.astype(np.int64)
+
+        # Replace -100 in labels with pad token id for proper decoding
+        if labels is not None:
+            pad_id = self.processor.tokenizer.pad_token_id
+            labels = np.where(labels != -100, labels, pad_id)
+
+        # Decode predictions and labels (convert numpy arrays to lists for fast tokenizers)
+        def _to_list(x):
+            return x.tolist() if isinstance(x, np.ndarray) else x
+        pred_texts = self.processor.batch_decode(_to_list(predictions), skip_special_tokens=True)
+        label_texts = self.processor.batch_decode(_to_list(labels), skip_special_tokens=True)
         
         # Normalize texts for fair comparison
         pred_texts = [self.text_normalizer.normalize_for_training(text) for text in pred_texts]
