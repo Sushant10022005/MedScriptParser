@@ -160,34 +160,45 @@ class TrOCRTrainer:
         # Create output directory
         os.makedirs(self.config.output_dir, exist_ok=True)
         
-        # Setup training arguments
-        # Ensure logging integrations are fully disabled and workers are safe on Windows
-        training_args = TrainingArguments(
-            output_dir=self.config.output_dir,
-            num_train_epochs=self.config.num_train_epochs,
-            per_device_train_batch_size=self.config.per_device_train_batch_size,
-            per_device_eval_batch_size=self.config.per_device_eval_batch_size,
-            learning_rate=self.config.learning_rate,
-            warmup_steps=self.config.warmup_steps,
-            logging_steps=self.config.logging_steps,
-            eval_steps=self.config.eval_steps,
-            save_steps=self.config.save_steps,
-            evaluation_strategy=self.config.eval_strategy,
-            save_strategy=self.config.save_strategy,
-            load_best_model_at_end=self.config.load_best_model_at_end,
-            metric_for_best_model=self.config.metric_for_best_model,
-            greater_is_better=self.config.greater_is_better,
-            save_total_limit=self.config.save_total_limit,
-            seed=self.config.seed,
-            fp16=self.config.fp16 and torch.cuda.is_available(),
-            dataloader_num_workers=(0 if os.name == "nt" else self.config.dataloader_num_workers),
-            dataloader_pin_memory=False,
-            dataloader_persistent_workers=False,
-            remove_unused_columns=False,
-            # Explicitly disable all reporters; use "none" to avoid auto-detection
-            report_to="none",
-            run_name="trocr-training",  # distinct name to avoid clashes if any logger is enabled externally
-        )
+        # Setup training arguments (robust to Transformers version differences)
+        import inspect
+        ta_sig = inspect.signature(TrainingArguments.__init__).parameters
+        def supported(key: str) -> bool:
+            return key in ta_sig
+
+        # Build kwargs and only keep supported keys
+        ta_kwargs = {
+            'output_dir': self.config.output_dir,
+            'num_train_epochs': self.config.num_train_epochs,
+            'per_device_train_batch_size': self.config.per_device_train_batch_size,
+            'per_device_eval_batch_size': self.config.per_device_eval_batch_size,
+            'learning_rate': self.config.learning_rate,
+            'warmup_steps': self.config.warmup_steps,
+            'logging_steps': self.config.logging_steps,
+            'eval_steps': self.config.eval_steps,
+            'save_steps': self.config.save_steps,
+            'save_strategy': self.config.save_strategy,
+            'load_best_model_at_end': self.config.load_best_model_at_end,
+            'metric_for_best_model': self.config.metric_for_best_model,
+            'greater_is_better': self.config.greater_is_better,
+            'save_total_limit': self.config.save_total_limit,
+            'seed': self.config.seed,
+            'fp16': (self.config.fp16 and torch.cuda.is_available()),
+            'dataloader_num_workers': (0 if os.name == "nt" else self.config.dataloader_num_workers),
+            'dataloader_pin_memory': False,
+            'dataloader_persistent_workers': False,
+            'remove_unused_columns': False,
+            'report_to': 'none',
+            'run_name': 'trocr-training',
+        }
+        # Prefer evaluation_strategy; fall back to eval_strategy if needed
+        if 'evaluation_strategy' in ta_sig:
+            ta_kwargs['evaluation_strategy'] = self.config.eval_strategy
+        elif 'eval_strategy' in ta_sig:
+            ta_kwargs['eval_strategy'] = self.config.eval_strategy
+        # Filter unsupported keys for this Transformers version
+        ta_kwargs = {k: v for k, v in ta_kwargs.items() if supported(k)}
+        training_args = TrainingArguments(**ta_kwargs)
         
         # Create data collator
         data_collator = TrOCRDataCollator(self.processor)
