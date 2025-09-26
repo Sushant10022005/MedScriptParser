@@ -27,7 +27,7 @@ from preprocessing import TextNormalizer
 @dataclass
 class TrOCRTrainingConfig:
     """Configuration for TrOCR training."""
-    model_name: str = "microsoft/trocr-large-handwritten"
+    model_name: str = "microsoft/trocr-base-handwritten"
     output_dir: str = "./trocr_medical_checkpoints"
     num_train_epochs: int = 10
     per_device_train_batch_size: int = 8
