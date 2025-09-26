@@ -18,7 +18,7 @@ from dataset_loader import load_dataset, DatasetConfig
 from preprocessing import preprocess_dataset, TextNormalizer
 from training import train_model, TrOCRTrainingConfig
 from inference import infer_on_test_dataset, TrOCRInferenceEngine
-from mediphi_correction import correct_with_mediphi, save_correction_results
+from mediphi_correction import correct_with_medical_ner, save_correction_results
 from evaluation import ComprehensiveEvaluator
 from visualization import create_visualizations
 
@@ -36,7 +36,7 @@ class OCRPipelineConfig:
         test_split: float = 0.1,
         
         # Training settings
-        model_name: str = "microsoft/trocr-large-handwritten",
+        model_name: str = "microsoft/trocr-base-handwritten",
         output_dir: str = "./ocr_project",
         num_epochs: int = 10,
         batch_size: int = 8,
@@ -49,7 +49,7 @@ class OCRPipelineConfig:
         inference_batch_size: int = 16,
         
         # Correction settings
-        ner_model: str = "microsoft/MediPhi",
+        ner_model: str = "d4data/biomedical-ner-all",
         vocab_file: str = "./medical_vocab.json",
         
         # Output settings
@@ -264,7 +264,7 @@ class OCRPipeline:
         training_texts = [item['text'] for item in self.datasets['train']]
         
         # Apply corrections
-        correction_results = correct_with_mediphi(
+        correction_results = correct_with_medical_ner(
             ocr_texts=self.ocr_predictions,
             training_texts=training_texts,
             vocab_file=self.config.vocab_file,

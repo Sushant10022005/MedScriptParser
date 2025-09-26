@@ -198,28 +198,41 @@ class MedicalVocabularyBuilder:
         print(f"Vocabulary loaded from {filepath}")
 
 
-class MediPhiNER:
-    """NER component using MediPhi or similar medical NER model."""
+class MedicalNER:
+    """NER component using proven medical NER models."""
     
-    def __init__(self, model_name: str = "microsoft/MediPhi"):
+    def __init__(self, model_name: str = "d4data/biomedical-ner-all"):
         self.model_name = model_name
         self.ner_pipeline = None
         
+        # Try multiple proven medical NER models
+        medical_models = [
+            model_name,
+            "d4data/biomedical-ner-all",           # Comprehensive medical NER
+            "emilyalsentzer/Bio_ClinicalBERT",     # Clinical-BERT base
+            "ugaray96/biobert_ncbi_disease_ner"    # BioBERT disease NER
+        ]
+        
         # Load model if transformers is available
         if TRANSFORMERS_AVAILABLE:
-            try:
-                print(f"Loading NER model: {model_name}")
-                self.ner_pipeline = pipeline(
-                    "ner", 
-                    model=model_name, 
-                    tokenizer=model_name,
-                    aggregation_strategy="simple"
-                )
-                print("NER model loaded successfully")
-            except Exception as e:
-                print(f"Warning: Could not load {model_name}: {e}")
-                print("Using rule-based NER fallback")
-                self.ner_pipeline = None
+            for model in medical_models:
+                try:
+                    print(f"Loading NER model: {model}")
+                    self.ner_pipeline = pipeline(
+                        "ner", 
+                        model=model, 
+                        tokenizer=model,
+                        aggregation_strategy="simple"
+                    )
+                    self.model_name = model
+                    print(f"✅ NER model loaded successfully: {model}")
+                    break
+                except Exception as e:
+                    print(f"❌ Could not load {model}: {e}")
+                    continue
+            
+            if self.ner_pipeline is None:
+                print("⚠️ All medical NER models failed. Using rule-based NER fallback")
         else:
             print("Transformers not available, using rule-based NER")
     
@@ -231,15 +244,34 @@ class MediPhiNER:
             return self._extract_with_rules(text)
     
     def _extract_with_model(self, text: str) -> List[MedicalEntity]:
-        """Extract entities using the NER model."""
+        """Extract entities using the medical NER model."""
         try:
             results = self.ner_pipeline(text)
             entities = []
             
             for result in results:
+                # Map common medical entity labels to our schema
+                label = result['entity_group'].upper()
+                
+                # Normalize entity labels to our schema
+                label_mapping = {
+                    'CHEMICAL': 'DRUG',
+                    'MEDICATION': 'DRUG', 
+                    'DRUG_NAME': 'DRUG',
+                    'MEDICINE': 'DRUG',
+                    'DOSE': 'DOSAGE',
+                    'STRENGTH': 'DOSAGE',
+                    'ROUTE': 'FORM',
+                    'ADMINISTRATION': 'FORM',
+                    'FREQ': 'FREQUENCY',
+                    'DURATION': 'FREQUENCY'
+                }
+                
+                normalized_label = label_mapping.get(label, label)
+                
                 entity = MedicalEntity(
                     text=result['word'],
-                    label=result['entity_group'],
+                    label=normalized_label,
                     start=result['start'],
                     end=result['end'],
                     confidence=result['score']
@@ -360,16 +392,16 @@ class FuzzyCorrector:
             return self.find_best_match(word, self.vocabulary.general_vocab)
 
 
-class MediPhiCorrector:
+class MedicalCorrector:
     """Main correction engine combining NER and fuzzy matching."""
     
     def __init__(
         self, 
         vocab_builder: MedicalVocabularyBuilder = None,
-        ner_model: str = "microsoft/MediPhi"
+        ner_model: str = "d4data/biomedical-ner-all"
     ):
         self.vocab_builder = vocab_builder or MedicalVocabularyBuilder()
-        self.ner = MediPhiNER(ner_model)
+        self.ner = MedicalNER(ner_model)
         self.fuzzy_corrector = FuzzyCorrector(self.vocab_builder)
         
         # Common OCR error patterns
@@ -475,20 +507,20 @@ class MediPhiCorrector:
         return max(0.1, min(1.0, confidence))
 
 
-def correct_with_mediphi(
+def correct_with_medical_ner(
     ocr_texts: List[str],
     training_texts: List[str] = None,
     vocab_file: str = None,
-    ner_model: str = "microsoft/MediPhi"
+    ner_model: str = "d4data/biomedical-ner-all"
 ) -> List[CorrectionResult]:
     """
-    Main function to correct OCR texts using MediPhi.
+    Main function to correct OCR texts using medical NER.
     
     Args:
         ocr_texts: List of OCR texts to correct
         training_texts: List of training texts to build vocabulary
         vocab_file: Path to saved vocabulary file
-        ner_model: NER model name
+        ner_model: Medical NER model name
         
     Returns:
         List of correction results
@@ -504,7 +536,7 @@ def correct_with_mediphi(
         if vocab_file:
             vocab_builder.save_vocabulary(vocab_file)
     
-    corrector = MediPhiCorrector(vocab_builder, ner_model)
+    corrector = MedicalCorrector(vocab_builder, ner_model)
     
     # Correct all texts
     results = []
@@ -572,7 +604,7 @@ if __name__ == "__main__":
     
     # Test correction
     try:
-        results = correct_with_mediphi(
+        results = correct_with_medical_ner(
             ocr_texts=sample_ocr_texts,
             training_texts=sample_training_texts,
             vocab_file="test_vocab.json"

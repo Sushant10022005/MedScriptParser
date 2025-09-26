@@ -41,6 +41,11 @@ tqdm>=4.65.0
 PyYAML>=6.0
 scikit-learn>=1.2.0
 
+# Medical NER models (downloaded automatically by transformers)
+# Primary: d4data/biomedical-ner-all
+# Fallback: emilyalsentzer/Bio_ClinicalBERT
+# Alternative: ugaray96/biobert_ncbi_disease_ner
+
 # Optional: For better performance on GPU
 # Uncomment if you have CUDA available
 # torch-audio>=2.0.0  # For audio processing (if needed)

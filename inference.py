@@ -392,7 +392,8 @@ if __name__ == "__main__":
     # Test with base model (since we don't have a trained model yet)
     try:
         # Initialize with base model
-        engine = TrOCRInferenceEngine("microsoft/trocr-large-handwritten")
+        # Example usage
+        engine = TrOCRInferenceEngine("microsoft/trocr-base-handwritten")
         
         # Test single image inference (using a sample from our dataset)
         sample_image_path = "handwritten_output/0.png"

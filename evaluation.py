@@ -37,7 +37,8 @@ class OCREvaluator:
         self, 
         predictions: List[str], 
         references: List[str],
-        normalize: bool = True
+        normalize: bool = True,
+        lowercase: bool = True
     ) -> Dict[str, float]:
         """
         Evaluate OCR predictions against ground truth.
@@ -53,6 +54,9 @@ class OCREvaluator:
         if normalize:
             predictions = [self.text_normalizer.normalize_for_training(text) for text in predictions]
             references = [self.text_normalizer.normalize_for_training(text) for text in references]
+        if lowercase:
+            predictions = [text.lower() for text in predictions]
+            references = [text.lower() for text in references]
         
         # Compute CER (Character Error Rate)
         cer = self.cer_metric.compute(predictions=predictions, references=references)
@@ -182,24 +186,29 @@ class ComprehensiveEvaluator:
             ner_metrics = self.ner_evaluator.evaluate_ner(predicted_entities, true_entities)
         
         # Create detailed results DataFrame
+        # Use the same normalization and casing for per-sample metrics
+        norm_preds_ocr = [self.ocr_evaluator.text_normalizer.normalize_for_training(t).lower() for t in ocr_predictions]
+        norm_preds_corr = [self.ocr_evaluator.text_normalizer.normalize_for_training(t).lower() for t in corrected_predictions]
+        norm_refs = [self.ocr_evaluator.text_normalizer.normalize_for_training(t).lower() for t in ground_truth_texts]
+
         results_df = pd.DataFrame({
             'image_path': images,
             'ground_truth': ground_truth_texts,
             'ocr_prediction': ocr_predictions,
             'corrected_prediction': corrected_predictions,
             'cer_before': [self.ocr_evaluator.cer_metric.compute(
-                predictions=[ocr_pred], references=[gt]
-            ) for ocr_pred, gt in zip(ocr_predictions, ground_truth_texts)],
+                predictions=[p], references=[r]
+            ) for p, r in zip(norm_preds_ocr, norm_refs)],
             'cer_after': [self.ocr_evaluator.cer_metric.compute(
-                predictions=[corr_pred], references=[gt]
-            ) for corr_pred, gt in zip(corrected_predictions, ground_truth_texts)],
+                predictions=[p], references=[r]
+            ) for p, r in zip(norm_preds_corr, norm_refs)],
             'exact_match_ocr': [
-                pred.strip() == gt.strip() 
-                for pred, gt in zip(ocr_predictions, ground_truth_texts)
+                p.strip().lower() == r.strip().lower()
+                for p, r in zip(ocr_predictions, ground_truth_texts)
             ],
             'exact_match_corrected': [
-                pred.strip() == gt.strip() 
-                for pred, gt in zip(corrected_predictions, ground_truth_texts)
+                p.strip().lower() == r.strip().lower()
+                for p, r in zip(corrected_predictions, ground_truth_texts)
             ]
         })
         

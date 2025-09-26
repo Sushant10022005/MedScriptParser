@@ -158,19 +158,19 @@ def download_base_models() -> bool:
         
         # Download TrOCR model
         print("  Downloading TrOCR model...")
-        processor = TrOCRProcessor.from_pretrained("microsoft/trocr-large-handwritten")
-        model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-large-handwritten")
+        processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
+        model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
         print("  ✅ TrOCR model downloaded")
         
-        # Try to download MediPhi (might not be available)
+        # Try to download medical NER model (might not be available)
         try:
-            print("  Downloading MediPhi model...")
+            print("  Downloading medical NER model...")
             from transformers import AutoTokenizer, AutoModelForTokenClassification
-            tokenizer = AutoTokenizer.from_pretrained("microsoft/MediPhi")
-            ner_model = AutoModelForTokenClassification.from_pretrained("microsoft/MediPhi")
-            print("  ✅ MediPhi model downloaded")
+            tokenizer = AutoTokenizer.from_pretrained("d4data/biomedical-ner-all")
+            ner_model = AutoModelForTokenClassification.from_pretrained("d4data/biomedical-ner-all")
+            print("  ✅ Medical NER model downloaded")
         except Exception:
-            print("  ⚠️  MediPhi model not available (will use rule-based NER)")
+            print("  ⚠️  Medical NER model not available (will use rule-based NER)")
         
         return True
         
@@ -197,7 +197,7 @@ def run_quick_test() -> bool:
         
         # Test inference (base model)
         from inference import TrOCRInferenceEngine
-        engine = TrOCRInferenceEngine("microsoft/trocr-large-handwritten")
+        engine = TrOCRInferenceEngine("microsoft/trocr-base-handwritten")
         print(f"  ✅ Inference engine works")
         
         return True

@@ -1,0 +1,112 @@
+# Generated outputs - don't track results and plots
+results/
+plots/
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+# Model checkpoints and outputs
+ocr_project/
+trocr_medical_checkpoints/
+*.pth
+*.bin
+*.safetensors
+
+# Keep dataset files for Kaggle training!
+# handwritten_output/ - KEEP THIS
+# dataset/ - KEEP THIS  
+# data/ - KEEP THIS
+# labels.txt - KEEP THIS
+
+# Generated result files (but keep dataset)
+detailed_results.csv
+metrics_summary.json
+experiment_summary.json
+results_report.txt
+correction_results.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTorch
+*.pt
+*.tar
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Environment variables
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+wandb/
+tensorboard_logs/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Documentation builds
+docs/_build/
+
+# Medical vocabularies (can be large, but may be needed)
+# *.vocab - commented out, might be needed
+# medical_vocab.json - commented out, might be needed
+# vocabulary.json - commented out, might be needed
+
+# Correction outputs - only specific result files
+# Keep any input JSON/CSV that might be needed
+
+# Backup files
+*.bak
+*.backup

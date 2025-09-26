@@ -86,7 +86,7 @@ class TextNormalizer:
 
 def preprocess_dataset(
     dataset_dict: Union[Dict[str, Dataset], Dataset],
-    model_name: str = "microsoft/trocr-large-handwritten",
+    model_name: str = "microsoft/trocr-base-handwritten",
     max_target_length: int = 128
 ) -> Union[Dict[str, Dataset], Dataset]:
     """
